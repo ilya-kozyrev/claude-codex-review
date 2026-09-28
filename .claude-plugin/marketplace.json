@@ -1,0 +1,14 @@
+{
+  "name": "codex-review",
+  "description": "OpenAI Codex CLI as a detached code reviewer for Claude Code",
+  "owner": {
+    "name": "Ilya Kozyrev"
+  },
+  "plugins": [
+    {
+      "name": "codex-review",
+      "source": "./plugins/codex-review",
+      "description": "Run Codex CLI detached from Claude Code for code review and narrow tasks: limit checks, live event stream, follow-up rounds"
+    }
+  ]
+}

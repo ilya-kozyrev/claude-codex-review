@@ -1,0 +1,10 @@
+{
+  "name": "codex-review",
+  "version": "0.1.0",
+  "description": "Run Codex CLI detached from Claude Code for code review and narrow tasks: limit checks, live event stream, follow-up rounds",
+  "author": {
+    "name": "Ilya Kozyrev"
+  },
+  "license": "MIT",
+  "keywords": ["code-review", "codex", "openai", "second-opinion"]
+}
