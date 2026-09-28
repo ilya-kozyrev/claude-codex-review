@@ -1,33 +1,32 @@
 # codex-review
 
-**Codex CLI как отсоединённый ревьюер кода для Claude Code.**
+**OpenAI Codex CLI as a detached code reviewer for Claude Code.**
 
-*English: a Claude Code plugin that runs OpenAI Codex CLI detached from the Claude session, for code
-review and narrow implementation tasks. It checks your Codex limits before it starts, streams events
-line by line to a watcher, and supports follow-up review rounds on the author's fixes.*
+**English** · [Русский](README.ru.md)
 
-Claude пишет код, а ревьюер из другой модели находит то, что Claude-ревьюер пропускает. Codex CLI
-запускается отдельным процессом, Claude тем временем работает дальше, следит за потоком событий и
-забирает результат из `final.md`. Ревью тратит лимиты подписки OpenAI, а не Claude.
+Claude writes the code, and a reviewer built on a different model catches what a Claude reviewer
+misses. Codex CLI runs as a separate process while Claude keeps working. Claude follows its event
+stream and takes the result from `final.md`. The review spends your OpenAI subscription, not your
+Claude limits.
 
-У нас этот скилл провёл больше 250 прогонов ревью за три недели. Пример: на одном MR Codex нашёл high — путь,
-в обход проверки прав меняющий данные других подразделений. Два независимых ревью Claude по тому же
-брифу этот дефект не нашли.
+We have run more than 250 reviews through this skill in three weeks. One example: on a merge request,
+Codex found a high-severity path that bypassed a permission check and changed other departments'
+data. Two independent Claude reviews of the same brief missed it.
 
-## Установка
+## Install
 
-Как плагин, из этого репозитория как маркетплейса:
+As a plugin, from this repository used as a marketplace:
 
 ```bash
 claude plugin marketplace add ilya-kozyrev/claude-codex-review
 claude plugin install codex-review@codex-review
 ```
 
-Внутри сессии то же делают `/plugin marketplace add ilya-kozyrev/claude-codex-review` и
-`/plugin install codex-review@codex-review`. Скилл вызывается как `/codex-review:codex-review`, или
-можно просто попросить «отдай ревью Codex'у».
+Inside a Claude Code session, `/plugin marketplace add ilya-kozyrev/claude-codex-review` and
+`/plugin install codex-review@codex-review` do the same. The skill is `/codex-review:codex-review`, or
+just ask Claude to "send this review to Codex".
 
-Вручную, как обычный скилл:
+By hand, as a plain skill:
 
 ```bash
 git clone https://github.com/ilya-kozyrev/claude-codex-review
@@ -35,79 +34,80 @@ mkdir -p ~/.claude/skills
 cp -R claude-codex-review/plugins/codex-review/skills/codex-review ~/.claude/skills/
 ```
 
-Что нужно:
-- [Codex CLI](https://github.com/openai/codex): `npm i -g @openai/codex` или `brew install codex`,
-  вход через `codex login`. Проверено на версиях 0.153–0.155.
-- `python3`, `git`, `bash`.
+Requirements:
+- [Codex CLI](https://github.com/openai/codex), installed with `npm i -g @openai/codex` or
+  `brew install codex`, and logged in with `codex login`. Tested on 0.153–0.155.
+- `python3`, `git` and `bash`.
 
-## Первый запуск: Codex должен знать то, что знает Claude
+## First run: Codex should know what Claude knows
 
-Голый Codex ничего не знает о проекте: он либо ревьюит вслепую, либо тратит лимиты на чтение
-документации. `codex-init.py` подключает к Codex настройки Claude симлинками, без копирования:
+A bare Codex knows nothing about your project. It either reviews blind or spends its limits reading
+the docs. `codex-init.py` connects Claude's setup to Codex with symlinks instead of copies:
 
-- глобальные правила — `~/.codex/AGENTS.md` ссылается на `~/.claude/CLAUDE.md`;
-- `CLAUDE.md` каждого репо — через `project_doc_fallback_filenames` в `~/.codex/config.toml`;
-- лимит `project_doc_max_bytes` поднимается так, чтобы правила влезли. По умолчанию он 32 КБ, и
-  более длинные правила Codex молча обрезает. У нас глобальные и проектные правила вместе — 57 КБ;
-- память проектов Claude (`~/.claude/projects`) — через ссылку и `developer_instructions`;
-- скиллы Claude, свои и из включённых плагинов, — ссылками в `~/.agents/skills`;
-- скиллы проекта — `<repo>/.agents/skills` ссылается на `.claude/skills`, ссылка скрыта через
+- global rules: `~/.codex/AGENTS.md` points to `~/.claude/CLAUDE.md`;
+- each repository's `CLAUDE.md`, through `project_doc_fallback_filenames` in `~/.codex/config.toml`;
+- `project_doc_max_bytes` is raised so the rules fit. The default is 32 KiB, and Codex silently cuts
+  longer rules. Our global and project rules together are 57 KB;
+- Claude's per-project memory (`~/.claude/projects`), through a link and `developer_instructions`;
+- Claude's skills, your own and those of enabled plugins, as links in `~/.agents/skills`;
+- project skills: `<repo>/.agents/skills` points to `.claude/skills`, hidden from git through
   `.git/info/exclude`.
 
 ```bash
 python3 ~/.claude/skills/codex-review/scripts/codex-init.py --repo ~/code/myrepo
 ```
 
-Команда делает бэкап `config.toml` и не трогает ничего чужого: свой `AGENTS.md`, свои папки
-скиллов, уже заданные ключи. Повторяй её после установки или обновления плагинов Claude, чтобы
-ссылки на скиллы не протухали. `codex-run.sh` зовёт её перед каждым запуском как предусловие:
-часть на уровне репо ставит сам, а если глобальная не настроена, отказывает и печатает точную
-команду. `--check` только показывает, чего не хватает.
+The command backs up `config.toml` first and leaves anything it did not create alone: your own
+`AGENTS.md`, your own skill folders, keys you already set. Run it again after you install or update
+Claude plugins, so the skill links keep pointing at live folders. `codex-run.sh` calls it before
+every run as a precondition. It sets up the repository part itself. If the global part is missing,
+it refuses and prints the exact command to run. `--check` only reports what is missing.
 
-## Использование
+## Usage
 
 ```bash
-S=~/.claude/skills/codex-review/scripts        # у плагина путь внутри ~/.claude/plugins/cache/…
+S=~/.claude/skills/codex-review/scripts        # for the plugin, it lives under ~/.claude/plugins/cache/…
 $S/codex-run.sh -C ~/code/myrepo -b review.md -m gpt-6-sol -e high -s read-only -n mr42
-python3 $S/codex-watch.py ~/.codex/runs/mr42-<время>   # построчный поток; в Claude Code — под Monitor
-cat ~/.codex/runs/mr42-<время>/final.md
+python3 $S/codex-watch.py ~/.codex/runs/mr42-<time>   # one line per event; in Claude Code, run it under Monitor
+cat ~/.codex/runs/mr42-<time>/final.md
 
-# второй раунд, после правок автора: только дифф правок плюс прежние находки
-$S/codex-run.sh -C ~/code/myrepo -b review.md -m gpt-6-sol -e high -s read-only -n mr42 --delta <sha-до-правок>
+# round two, after the author's fixes: only the fix diff, plus the previous findings
+$S/codex-run.sh -C ~/code/myrepo -b review.md -m gpt-6-sol -e high -s read-only -n mr42 --delta <sha-before-fixes>
 
-python3 $S/codex-limits.py                      # сколько осталось в 5-часовом и недельном окне
+python3 $S/codex-limits.py                     # what is left in the 5-hour and weekly windows
 ```
 
-Бриф пишется по образцу
-[`examples/review-brief.md`](plugins/codex-review/skills/codex-review/examples/review-brief.md): узкий
-дифф по sha, что именно проверить, формат находок и строка вердикта.
+Write the brief like
+[`examples/review-brief.md`](plugins/codex-review/skills/codex-review/examples/review-brief.md): a
+narrow diff by sha, exactly what to check, the finding format and a verdict line.
 
-## Что умеет скрипт
+## What the script does
 
-- **Проверяет лимиты до старта.** Если в 5-часовом окне Codex осталось меньше 5 % для ревью
-  (`-s read-only`) или меньше 30 % для исполнения, либо в недельном меньше 5 %, скрипт отказывает с
-  кодом 3. Так прогон не обрывается на середине. Порог меняется через `CODEX_MIN_LEFT`.
-- **Не больше двух живых прогонов одновременно** (`CODEX_MAX_RUNS`).
-- **Не запускает effort xhigh/max.** У нас xhigh однажды съел всё 5-часовое окно и не выдал
-  `final.md`. Перебить можно через `CODEX_ALLOW_XHIGH=1`.
-- **`--delta <sha>`**: второй раунд смотрит только дифф правок и получает прежние находки из
-  `final.md` прошлого прогона с тем же `-n`.
-- **`--dry-run`**: все проверки и итоговый бриф без запуска Codex.
-- **Файлы прогона** в `~/.codex/runs/<имя>-<время>/`: `brief.md`, `events.jsonl`, `final.md`,
-  `stderr.log`, `pid`, `meta`.
+- **Checks the limits before it starts.** A review (`-s read-only`) needs at least 5% left in
+  Codex's 5-hour window, an implementation task at least 30%, and both need at least 5% of the weekly
+  window. Otherwise the script refuses with exit code 3, so a run does not die halfway. Change the
+  threshold with `CODEX_MIN_LEFT`.
+- **Runs at most two Codex processes at once** (`CODEX_MAX_RUNS`).
+- **Refuses effort xhigh/max.** For us, xhigh once burned the whole 5-hour window and produced no
+  `final.md`. Override with `CODEX_ALLOW_XHIGH=1`.
+- **`--delta <sha>`**: the second round looks only at the fix diff and gets the previous findings
+  from the last run's `final.md` with the same `-n`.
+- **`--dry-run`**: all the checks and the final brief, without starting Codex.
+- **Run files** live in `~/.codex/runs/<name>-<time>/`: `brief.md`, `events.jsonl`, `final.md`,
+  `stderr.log`, `pid` and `meta`.
 
-## Грабли `codex exec`, которые скрипт уже обходит
+## `codex exec` pitfalls the script already handles
 
-- У `codex exec` нет `--full-auto`. Effort задаётся через `-c model_reasoning_effort="…"`.
-- Без `</dev/null` exec молча висит: он ждёт stdin.
-- Без `--json` в stdout приходит только финальный ответ, а ход работы уходит в stderr.
-- Sandbox `workspace-write` не может коммитить и ходить в сеть: коммит делает вызывающий.
+- `codex exec` has no `--full-auto`. Set effort with `-c model_reasoning_effort="…"`.
+- Without `</dev/null`, exec hangs silently waiting for stdin.
+- Without `--json`, stdout gets only the final answer and the progress goes to stderr.
+- The `workspace-write` sandbox cannot commit or reach the network, so the caller commits.
 
-## Когда у Codex кончились лимиты
+## When Codex runs out of limits
 
-Запасной вариант — ревью Claude. До 5 ноября 2026 его можно бесплатно сделать в облачной сессии за
-облачный кредит: [claude-cloud-review](https://github.com/ilya-kozyrev/claude-cloud-review).
+Fall back to a Claude review. Until November 5, 2026 you can run it for free in a cloud session on
+the cloud credit: [claude-cloud-review](https://github.com/ilya-kozyrev/claude-cloud-review).
 
-## Лицензия
+## License
 
 MIT
