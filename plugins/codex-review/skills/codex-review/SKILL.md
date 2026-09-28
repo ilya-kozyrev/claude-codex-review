@@ -24,9 +24,31 @@ python3 scripts/codex-limits.py [--json]     # what is left of the Codex account
 `codex-run.sh` prints `run: ~/.codex/runs/<name>-<time>`, which holds `brief.md`, `events.jsonl`
 (the `--json` stream), `final.md` (the final answer, `-o`), `stderr.log`, `pid` and `meta`.
 
-**It refuses before starting (exit 3; reasons in `codex-run.sh -h`):** effort xhigh/max, too many
-live runs, or too little left in the limits. Then use another reviewer. If the limits cannot be read,
-that is a warning, not a refusal.
+**It refuses before starting (exit 3; reasons in `codex-run.sh -h`):** Codex cannot see Claude's
+setup, effort is xhigh/max, too many runs are live, or too little is left in the limits. If the
+limits cannot be read, that is a warning, not a refusal. In the other cases use another reviewer.
+
+## Codex sees what Claude sees: `codex-init.py`
+
+A bare Codex knows nothing about the project, so it either reviews blind or spends its budget
+reading docs. `codex-init.py` links Claude's configuration into Codex instead of copying it:
+
+- `~/.codex/AGENTS.md` → `~/.claude/CLAUDE.md`, for the global rules;
+- `project_doc_fallback_filenames = ["CLAUDE.md"]`, so Codex reads a repo's `CLAUDE.md` wherever
+  the repo has no `AGENTS.md`;
+- `project_doc_max_bytes` raised so the rules fit. The 32 KiB default truncates longer rules
+  silently;
+- `~/.codex/claude-projects` → `~/.claude/projects` plus `developer_instructions`, so Codex reads
+  the project's Claude memory index;
+- `~/.agents/skills/<name>` → every skill in `~/.claude/skills` and in the enabled Claude plugins;
+- per repo, `<repo>/.agents/skills` → `.claude/skills`, hidden from git through `.git/info/exclude`.
+
+Run it once: `python3 scripts/codex-init.py --repo <repo>`. It backs up `config.toml` first and
+never overwrites anything it did not create. Run it again after installing or updating Claude
+plugins, so the skill links follow. `codex-run.sh` calls it as a precondition
+(`--preflight <dir>`): the repo part is linked on every run, and the global part is only checked.
+If the global part is missing, `codex-run.sh` refuses and prints the exact command.
+`codex-init.py --check [--repo DIR]` reports without changing anything.
 
 ## Steps
 

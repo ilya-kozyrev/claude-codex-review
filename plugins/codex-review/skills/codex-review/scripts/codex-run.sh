@@ -12,6 +12,8 @@
 # Prints the run directory and ready-to-use watch commands.
 #
 # Refuses before starting (exit 3):
+#   - Codex does not see Claude's setup: codex-init.py --preflight fails (run codex-init.py once;
+#     CODEX_SKIP_INIT=1 skips the check). Its repo part runs every time: <repo>/.agents/skills;
 #   - effort xhigh/max (it burned a whole 5-hour window without a final.md for us);
 #     override with CODEX_ALLOW_XHIGH=1;
 #   - CODEX_MAX_RUNS (default 2) runs already alive, by the pid files in the runs directory;
@@ -83,7 +85,15 @@ if [ -d "$RUNS" ]; then
 fi
 [ "$ALIVE" -lt "$MAX_RUNS" ] || refuse "$ALIVE Codex runs already alive (limit $MAX_RUNS):$ALIVE_LIST. Wait for one (codex-status.sh) or use another reviewer."
 
-# 3. limits
+# 3. Codex sees Claude's rules, memory and skills: the repo part is linked here, the global part
+#    only checked (codex-init.py sets it up once). --dry-run changes nothing.
+if [ "${CODEX_SKIP_INIT:-0}" != 1 ]; then
+  PF=""; [ "$DRY" -eq 1 ] && PF="--check"
+  python3 "$HERE/codex-init.py" --preflight "$DIR" --quiet $PF >&2 \
+    || refuse "Codex would start without the project's rules. Run the command above once (CODEX_SKIP_INIT=1 to skip)."
+fi
+
+# 4. limits
 case "$SANDBOX" in read-only) MODE="review"; DEF_MIN=5 ;; *) MODE="implementation"; DEF_MIN=30 ;; esac
 MIN_LEFT="${CODEX_MIN_LEFT:-$DEF_MIN}"
 if [ -n "${CODEX_LIMITS_JSON:-}" ]; then LIMJSON="$(cat "$CODEX_LIMITS_JSON")"; LIMRC=$?
@@ -119,7 +129,7 @@ print(("bad|" + "; ".join(bad)) if bad else ("ok|" + "; ".join(out)))
   esac
 fi
 
-# 4. final brief (+ delta)
+# 5. final brief (+ delta)
 STAGE="$(mktemp "${TMPDIR:-/tmp}/codex-brief.XXXXXX")"
 trap 'rm -f "$STAGE"' EXIT
 cp "$BRIEF" "$STAGE"

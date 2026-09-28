@@ -1,6 +1,6 @@
 {
   "name": "codex-review",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Run Codex CLI detached from Claude Code for code review and narrow tasks: limit checks, live event stream, follow-up rounds",
   "author": {
     "name": "Ilya Kozyrev"
