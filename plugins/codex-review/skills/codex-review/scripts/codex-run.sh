@@ -62,7 +62,7 @@ while getopts "C:b:m:e:s:n:h" opt; do
   case "$opt" in
     C) DIR="$OPTARG" ;; b) BRIEF="$OPTARG" ;; m) MODEL="$OPTARG" ;; e) EFFORT="$OPTARG" ;;
     s) SANDBOX="$OPTARG" ;; n) NAME="$OPTARG" ;;
-    h|*) sed -n 2,30p "$0"; exit 2 ;;
+    h|*) sed -n '2,/^set -/{/^#/p;}' "$0"; exit 2 ;;
   esac
 done
 [ -n "$DIR" ] && [ -d "$DIR" ] || { echo "need -C <existing directory>" >&2; exit 2; }

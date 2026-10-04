@@ -67,22 +67,31 @@ it refuses and prints the exact command to run. `--check` only reports what is m
 
 ```bash
 S=~/.claude/skills/codex-review/scripts        # for the plugin, it lives under ~/.claude/plugins/cache/…
-$S/codex-run.sh -C ~/code/myrepo -b review.md -m gpt-6-sol -e high -s read-only -n mr42
+$S/codex-run.sh -C ~/code/myrepo -b review.md -m sol -e high -s read-only -n mr42
 python3 $S/codex-watch.py ~/.codex/runs/mr42-<time>   # one line per event; in Claude Code, run it under Monitor
 cat ~/.codex/runs/mr42-<time>/final.md
 
 # round two, after the author's fixes: only the fix diff, plus the previous findings
-$S/codex-run.sh -C ~/code/myrepo -b review.md -m gpt-6-sol -e high -s read-only -n mr42 --delta <sha-before-fixes>
+$S/codex-run.sh -C ~/code/myrepo -b review.md -m sol -e high -s read-only -n mr42 --delta <sha-before-fixes>
 
 python3 $S/codex-limits.py                     # what is left in the 5-hour and weekly windows
 ```
 
 Write the brief like
 [`examples/review-brief.md`](plugins/codex-review/skills/codex-review/examples/review-brief.md): a
-narrow diff by sha, exactly what to check, the finding format and a verdict line.
+narrow diff by sha, exactly what to check, the author's test results (a read-only review cannot
+rerun them), the finding format and a verdict line. A read-only review cannot write files, so it
+comes back as the final answer, `final.md`.
 
 ## What the script does
 
+- **Picks the model by family.** `-m sol|astra|luna` (any case) resolves to the newest listed model
+  of that family in the Codex CLI's catalog cache (`$CODEX_HOME/models_cache.json`, default
+  `~/.codex`), so nothing here goes stale on the next release. A full id (`-m gpt-…`) passes through
+  unchanged. The default is `sol`: effort `medium` for implementation, `high` for a read-only review.
+  `astra` is opt-in, for work whose judgement needs justify it. If the catalog is missing or has no
+  model of the family, the script refuses (exit 3) and asks for a full id. The resolved id is printed
+  at the start and written to `meta` (`model=`, `model_family=`).
 - **Checks the limits before it starts.** A review (`-s read-only`) needs at least 5% left in
   Codex's 5-hour window, an implementation task at least 30%, and both need at least 5% of the weekly
   window. Otherwise the script refuses with exit code 3, so a run does not die halfway. Change the

@@ -66,22 +66,31 @@ python3 ~/.claude/skills/codex-review/scripts/codex-init.py --repo ~/code/myrepo
 
 ```bash
 S=~/.claude/skills/codex-review/scripts        # у плагина путь внутри ~/.claude/plugins/cache/…
-$S/codex-run.sh -C ~/code/myrepo -b review.md -m gpt-6-sol -e high -s read-only -n mr42
+$S/codex-run.sh -C ~/code/myrepo -b review.md -m sol -e high -s read-only -n mr42
 python3 $S/codex-watch.py ~/.codex/runs/mr42-<время>   # построчный поток; в Claude Code — под Monitor
 cat ~/.codex/runs/mr42-<время>/final.md
 
 # второй раунд, после правок автора: только дифф правок плюс прежние находки
-$S/codex-run.sh -C ~/code/myrepo -b review.md -m gpt-6-sol -e high -s read-only -n mr42 --delta <sha-до-правок>
+$S/codex-run.sh -C ~/code/myrepo -b review.md -m sol -e high -s read-only -n mr42 --delta <sha-до-правок>
 
 python3 $S/codex-limits.py                      # сколько осталось в 5-часовом и недельном окне
 ```
 
 Бриф пишется по образцу
 [`examples/review-brief.md`](plugins/codex-review/skills/codex-review/examples/review-brief.md): узкий
-дифф по sha, что именно проверить, формат находок и строка вердикта.
+дифф по sha, что именно проверить, результаты тестов автора (ревью в read-only не может их
+перезапустить), формат находок и строка вердикта. Ревью в read-only не пишет файлы и возвращается
+как финальный ответ, `final.md`.
 
 ## Что умеет скрипт
 
+- **Выбирает модель по семейству.** `-m sol|astra|luna` (регистр не важен) разворачивается в самую
+  новую доступную модель этого семейства из кеша каталога Codex CLI (`$CODEX_HOME/models_cache.json`,
+  по умолчанию `~/.codex`), так что со следующим релизом здесь ничего не устаревает. Полный id
+  (`-m gpt-…`) проходит как есть. По умолчанию `sol`: effort `medium` для исполнения, `high` для
+  ревью в read-only. `astra` включается явно, для работы, где нужно суждение. Если каталога нет или в
+  нём нет модели семейства, скрипт отказывает (код 3) и просит полный id. Выбранный id печатается
+  при старте и пишется в `meta` (`model=`, `model_family=`).
 - **Проверяет лимиты до старта.** Если в 5-часовом окне Codex осталось меньше 5 % для ревью
   (`-s read-only`) или меньше 30 % для исполнения, либо в недельном меньше 5 %, скрипт отказывает с
   кодом 3. Так прогон не обрывается на середине. Порог меняется через `CODEX_MIN_LEFT`.
