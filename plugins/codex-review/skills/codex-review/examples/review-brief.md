@@ -1,12 +1,17 @@
 # Review: <one line on what the change does> (MR !<n>)
 
-Read-only review. Do not edit files. Answer in English.
+Read-only review: do not edit files and do not create temp files or directories (the sandbox forbids
+it). Your final answer is the review. Answer in English.
 
 ## Context
 <Two to five lines: what the change is for, the decision the author made that you want challenged,
 which tests changed their expectations on purpose and why.>
 
 Diff: `git diff <base-sha>..HEAD`.
+
+## Author's test results (do not rerun them)
+<The commands the author ran and their outcome: «pytest tests/api: 212 passed, exit 0», lint, type
+check. The read-only sandbox cannot run a test suite that writes files.>
 
 ## What to check (only this)
 1. Completeness: every path that <writes X / checks Y> now <does Z> — routers, services, background jobs.

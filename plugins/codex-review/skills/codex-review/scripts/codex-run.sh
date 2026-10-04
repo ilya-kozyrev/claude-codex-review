@@ -4,6 +4,14 @@
 #   codex-run.sh -C <dir> -b <brief.md> [-m model] [-e effort] [-s sandbox] [-n name]
 #                [--delta <sha>] [--dry-run]
 #
+# -m  a model family (sol | astra | luna, any case) or a full id (gpt-…, passed through as is).
+#     A family resolves to the newest model of that family in the Codex CLI's catalog cache
+#     ($CODEX_HOME/models_cache.json, default ~/.codex): only entries with visibility "list",
+#     the highest version in the slug (gpt-<major>[.<minor>]-<family>) wins, ties go to the lower
+#     priority number. No catalog, or no model of that family: refuse (exit 3), pass a full id.
+#     Default sol (CODEX_MODEL overrides); astra only for work whose judgement needs justify it.
+# -e  default high for a read-only review, medium otherwise.
+#
 # Creates the run directory ~/.codex/runs/<name>-<time>/ with a copy of the brief and writes:
 #   events.jsonl — the `--json` event stream (commands, file changes, messages, usage)
 #   final.md     — the model's final answer (`-o`)
@@ -35,7 +43,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 RUNS="${CODEX_RUNS_DIR:-$HOME/.codex/runs}"
 MAX_RUNS="${CODEX_MAX_RUNS:-2}"
-MODEL="${CODEX_MODEL:-gpt-6-astra}"; EFFORT="medium"; SANDBOX="workspace-write"; NAME="run"; DIR=""; BRIEF=""
+MODEL="${CODEX_MODEL:-sol}"; EFFORT=""; SANDBOX="workspace-write"; NAME="run"; DIR=""; BRIEF=""
 DELTA=""; DRY=0
 
 # long options -> short, getopts in bash 3.2 has no long options
@@ -54,7 +62,7 @@ while getopts "C:b:m:e:s:n:h" opt; do
   case "$opt" in
     C) DIR="$OPTARG" ;; b) BRIEF="$OPTARG" ;; m) MODEL="$OPTARG" ;; e) EFFORT="$OPTARG" ;;
     s) SANDBOX="$OPTARG" ;; n) NAME="$OPTARG" ;;
-    h|*) sed -n 2,30p "$0"; exit 2 ;;
+    h|*) sed -n '2,/^set -/{/^#/p;}' "$0"; exit 2 ;;
   esac
 done
 [ -n "$DIR" ] && [ -d "$DIR" ] || { echo "need -C <existing directory>" >&2; exit 2; }
@@ -65,10 +73,22 @@ DIR="$(cd "$DIR" && pwd)"
 refuse() { echo "REFUSED: $*" >&2; exit 3; }
 lc() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
 
+# 0. model: a family alias -> the newest listed id of that family, a full id passes through
+[ -n "$EFFORT" ] || case "$SANDBOX" in read-only) EFFORT="high" ;; *) EFFORT="medium" ;; esac
+MODEL_FAMILY=""
+case "$(lc "$MODEL")" in
+  gpt-*) ;;
+  *)
+    MODEL_FAMILY="$(lc "$MODEL")"
+    MODEL="$(python3 "$HERE/codex-model.py" "$MODEL_FAMILY" "${CODEX_HOME:-$HOME/.codex}/models_cache.json")" \
+      || refuse "cannot resolve model family '$MODEL_FAMILY' (see above). Pass a full id, e.g. -m gpt-<version>-<family>."
+    ;;
+esac
+
 # 1. no xhigh
 case "$(lc "$EFFORT")" in
   *xhigh*|max) [ "${CODEX_ALLOW_XHIGH:-0}" = 1 ] \
-    || refuse "effort=$EFFORT: review with -e high, implementation with -e medium (CODEX_ALLOW_XHIGH=1 to override)." ;;
+    || refuse "effort=$EFFORT: review with -m sol -e high, implementation with -m sol -e medium; astra only for judgement work (CODEX_ALLOW_XHIGH=1 to override)." ;;
 esac
 
 # 2. at most MAX_RUNS live runs; alive = kill -0 on the pid file and the process is codex (pids get reused)
@@ -161,7 +181,7 @@ if [ -n "$DELTA" ]; then
 fi
 
 if [ "$DRY" -eq 1 ]; then
-  echo "DRY-RUN: would start. model $MODEL/$EFFORT, sandbox $SANDBOX, -C $DIR, live runs $ALIVE/$MAX_RUNS"
+  echo "DRY-RUN: would start. model $MODEL${MODEL_FAMILY:+ (family $MODEL_FAMILY)}/$EFFORT, sandbox $SANDBOX, -C $DIR, live runs $ALIVE/$MAX_RUNS"
   echo "command: codex exec --skip-git-repo-check -m $MODEL -c model_reasoning_effort=\"$EFFORT\" --sandbox $SANDBOX -C $DIR --json -o <run>/final.md <brief $(wc -c < "$STAGE" | tr -d ' ') bytes>"
   echo "brief tail:"; tail -n 8 "$STAGE"
   exit 0
@@ -170,7 +190,7 @@ fi
 RUN="$RUNS/${NAME}-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$RUN"
 cp "$STAGE" "$RUN/brief.md"
-printf 'dir=%s\nmodel=%s\neffort=%s\nsandbox=%s\ndelta=%s\nstarted=%s\n' "$DIR" "$MODEL" "$EFFORT" "$SANDBOX" "$DELTA" "$(date -u +%FT%TZ)" > "$RUN/meta"
+printf 'dir=%s\nmodel=%s\nmodel_family=%s\neffort=%s\nsandbox=%s\ndelta=%s\nstarted=%s\n' "$DIR" "$MODEL" "$MODEL_FAMILY" "$EFFORT" "$SANDBOX" "$DELTA" "$(date -u +%FT%TZ)" > "$RUN/meta"
 
 nohup codex exec --skip-git-repo-check -m "$MODEL" -c "model_reasoning_effort=\"$EFFORT\"" \
   --sandbox "$SANDBOX" -C "$DIR" --json -o "$RUN/final.md" "$(cat "$RUN/brief.md")" \
@@ -178,6 +198,7 @@ nohup codex exec --skip-git-repo-check -m "$MODEL" -c "model_reasoning_effort=\"
 echo $! > "$RUN/pid"
 
 echo "run:    $RUN"
+echo "model:  $MODEL${MODEL_FAMILY:+ (family $MODEL_FAMILY)}, effort $EFFORT"
 echo "pid:    $(cat "$RUN/pid")"
 echo "watch:  python3 $HERE/codex-watch.py $RUN      # one line per event; run it under a watcher"
 echo "status: $HERE/codex-status.sh $RUN"
